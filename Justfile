@@ -2,7 +2,7 @@ default:
     @just --list
 
 # spin up Alpine
-alpine iso= "~/Downloads/alpine-standard-3.22.1-x86_64.iso":
+alpine iso= "~/images/Downloads/alpine-standard-3.22.1-x86_64.iso":
     virt-install \
       --connect qemu:///system \
       --name alpine-standard \
@@ -15,8 +15,8 @@ alpine iso= "~/Downloads/alpine-standard-3.22.1-x86_64.iso":
       --graphics none \
       --console pty,target_type=serial
 
-# spin up Arch
-arch iso="/mnt/arch-root/home/mcmoodoo/Downloads/archlinux-2025.09.01-x86_64.iso":
+# spin up Ubuntu
+arch iso="~/images/ubuntu-24.04.1.iso":
     virt-install \
       --connect qemu:///system \
       --name arch-minimal \
@@ -29,7 +29,7 @@ arch iso="/mnt/arch-root/home/mcmoodoo/Downloads/archlinux-2025.09.01-x86_64.iso
       --graphics none \
       --console pty,target_type=serial
 
-arch-curses iso="/mnt/arch-root/home/mcmoodoo/Downloads/archlinux-2025.09.01-x86_64.iso":
+arch-curses iso="~/images/ubuntu-24.04.1.iso":
     virt-install \
       --connect qemu:///system \
       --name arch-curses \
