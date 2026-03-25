@@ -16,10 +16,10 @@ alpine iso= "~/images/Downloads/alpine-standard-3.22.1-x86_64.iso":
       --console pty,target_type=serial
 
 # spin up Ubuntu
-arch iso="~/images/ubuntu-24.04.1.iso":
+ubuntu iso="~/images/ubuntu-24.04.1.iso":
     virt-install \
       --connect qemu:///system \
-      --name arch-minimal \
+      --name ubuntu-minimal \
       --ram 1024 \
       --vcpus 2 \
       --disk size=5 \
