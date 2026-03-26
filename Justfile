@@ -8,8 +8,8 @@ list:
 # destroy and undefine a VM by name
 destroy name="ubuntu-minimal":
     -virsh -c qemu:///system destroy {{name}}
-    virsh -c qemu:///system undefine {{name}}
-    rm ubuntu-minimal.qcow2
+    virsh -c qemu:///system undefine {{name}} --nvram
+    rm ubuntu-minimal.qcow2 seed.img
 
 
 # spin up Ubuntu minimal cloud image, then SSH in
@@ -24,15 +24,37 @@ ubuntu img="~/images/ubuntu-minimal-26.04-amd64.qcow2" pubkey="~/.ssh/id_ed25519
       cp "$img_path" ubuntu-minimal.qcow2
       qemu-img resize ubuntu-minimal.qcow2 5G
     fi
-    cat > /tmp/ubuntu-cloud-init.yaml <<CLOUD
+    if [ ! -f seed.img ]; then
+      tmpdir=$(mktemp -d)
+      cat > "$tmpdir/user-data" <<USERDATA
     #cloud-config
     users:
       - name: ubuntu
+        lock_passwd: false
+        passwd: \$6\$7KKWkLbaakpgFZiT\$PyP4fg3MVEzVvyUrcuM7.Ywenu0Ikjv2gTDQIias6dyENt4cWyZSOQ76s0I7ab4q4RRstjPs0Cq3a2uE6bRKq.
         ssh_authorized_keys:
           - $(cat "$pubkey_path")
         sudo: ALL=(ALL) NOPASSWD:ALL
         shell: /bin/bash
-    CLOUD
+    ssh_pwauth: true
+    USERDATA
+      cat > "$tmpdir/meta-data" <<METADATA
+    instance-id: ubuntu-minimal
+    local-hostname: ubuntu-minimal
+    METADATA
+      cat > "$tmpdir/network-config" <<NETCFG
+    version: 2
+    ethernets:
+      all:
+        match:
+          name: "*"
+        dhcp4: true
+    NETCFG
+      xorriso -as genisoimage -output seed.img \
+        -volid cidata -joliet -rock \
+        "$tmpdir/user-data" "$tmpdir/meta-data" "$tmpdir/network-config"
+      rm -rf "$tmpdir"
+    fi
     virt-install \
       --connect qemu:///system \
       --name ubuntu-minimal \
@@ -40,7 +62,8 @@ ubuntu img="~/images/ubuntu-minimal-26.04-amd64.qcow2" pubkey="~/.ssh/id_ed25519
       --vcpus 1 \
       --import \
       --disk path=ubuntu-minimal.qcow2,format=qcow2 \
-      --cloud-init user-data=/tmp/ubuntu-cloud-init.yaml,disable=on \
+      --disk path=seed.img,device=cdrom \
+      --boot uefi \
       --os-variant ubuntujammy \
       --network network=default \
       --graphics none \
@@ -112,3 +135,5 @@ arch-virsh-gui iso="~/images/archlinux-2026.03.01-x86_64.iso":
       --video qxl \
       --boot cdrom,hd
 
+connect vm="ubuntu-minimal":
+  virsh -c qemu:///system console {{vm}}
