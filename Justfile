@@ -2,27 +2,13 @@ default:
     @just --list
 
 # spin up Alpine
-alpine iso= "~/images/alpine-standard-3.22.1-x86_64.iso":
+alpine iso="~/images/alpine-standard-3.23.2-x86_64.iso":
     virt-install \
       --connect qemu:///system \
       --name alpine-standard \
       --ram 1024 \
       --vcpus 1 \
       --disk size=3 \
-      --cdrom {{iso}} \
-      --os-variant generic \
-      --network network=default \
-      --graphics none \
-      --console pty,target_type=serial
-
-# spin up Ubuntu
-ubuntu iso="~/images/ubuntu-24.04.1.iso":
-    virt-install \
-      --connect qemu:///system \
-      --name ubuntu-minimal \
-      --ram 1024 \
-      --vcpus 2 \
-      --disk size=5 \
       --cdrom {{iso}} \
       --os-variant generic \
       --network network=default \
