@@ -1,16 +1,34 @@
 default:
     @just --list
 
-# spin up Alpine
-alpine iso="~/images/alpine-standard-3.23.2-x86_64.iso":
+# list all system domains
+list:
+    virsh -c qemu:///system list --all
+
+# destroy and undefine a VM by name
+destroy name:
+    -virsh -c qemu:///system destroy {{name}}
+    virsh -c qemu:///system undefine {{name}}
+
+# spin up Ubuntu minimal cloud image (login: ubuntu/ubuntu)
+ubuntu img="~/images/ubuntu-minimal-26.04-amd64.qcow2":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    img_path="{{img}}"
+    img_path="${img_path/#\~/$HOME}"
+    if [ ! -f ubuntu-minimal.qcow2 ]; then
+      cp "$img_path" ubuntu-minimal.qcow2
+      qemu-img resize ubuntu-minimal.qcow2 5G
+    fi
     virt-install \
       --connect qemu:///system \
-      --name alpine-standard \
-      --ram 1024 \
+      --name ubuntu-minimal \
+      --ram 2048 \
       --vcpus 1 \
-      --disk size=3 \
-      --cdrom {{iso}} \
-      --os-variant generic \
+      --import \
+      --disk path=ubuntu-minimal.qcow2,format=qcow2 \
+      --cloud-init root-password-generate=on,disable=on \
+      --os-variant ubuntujammy \
       --network network=default \
       --graphics none \
       --console pty,target_type=serial
