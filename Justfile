@@ -6,20 +6,33 @@ list:
     virsh -c qemu:///system list --all
 
 # destroy and undefine a VM by name
-destroy name:
+destroy name="ubuntu-minimal":
     -virsh -c qemu:///system destroy {{name}}
     virsh -c qemu:///system undefine {{name}}
+    rm ubuntu-minimal.qcow2
 
-# spin up Ubuntu minimal cloud image (login: ubuntu/ubuntu)
-ubuntu img="~/images/ubuntu-minimal-26.04-amd64.qcow2":
+
+# spin up Ubuntu minimal cloud image, then SSH in
+ubuntu img="~/images/ubuntu-minimal-26.04-amd64.qcow2" pubkey="~/.ssh/id_ed25519.pub":
     #!/usr/bin/env bash
     set -euo pipefail
     img_path="{{img}}"
     img_path="${img_path/#\~/$HOME}"
+    pubkey_path="{{pubkey}}"
+    pubkey_path="${pubkey_path/#\~/$HOME}"
     if [ ! -f ubuntu-minimal.qcow2 ]; then
       cp "$img_path" ubuntu-minimal.qcow2
       qemu-img resize ubuntu-minimal.qcow2 5G
     fi
+    cat > /tmp/ubuntu-cloud-init.yaml <<CLOUD
+    #cloud-config
+    users:
+      - name: ubuntu
+        ssh_authorized_keys:
+          - $(cat "$pubkey_path")
+        sudo: ALL=(ALL) NOPASSWD:ALL
+        shell: /bin/bash
+    CLOUD
     virt-install \
       --connect qemu:///system \
       --name ubuntu-minimal \
@@ -27,11 +40,33 @@ ubuntu img="~/images/ubuntu-minimal-26.04-amd64.qcow2":
       --vcpus 1 \
       --import \
       --disk path=ubuntu-minimal.qcow2,format=qcow2 \
-      --cloud-init root-password-generate=on,disable=on \
+      --cloud-init user-data=/tmp/ubuntu-cloud-init.yaml,disable=on \
       --os-variant ubuntujammy \
       --network network=default \
       --graphics none \
-      --console pty,target_type=serial
+      --noautoconsole
+    echo "Waiting for VM to get an IP..."
+    for i in $(seq 1 30); do
+      ip=$(virsh -c qemu:///system domifaddr ubuntu-minimal 2>/dev/null | grep -oP '(\d+\.){3}\d+') && break
+      sleep 2
+    done
+    if [ -z "${ip:-}" ]; then
+      echo "Could not get VM IP. Check: virsh -c qemu:///system domifaddr ubuntu-minimal"
+      exit 1
+    fi
+    echo "Connecting to ubuntu@$ip ..."
+    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "ubuntu@$ip"
+
+# SSH into a running Ubuntu VM
+ubuntu-ssh:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ip=$(virsh -c qemu:///system domifaddr ubuntu-minimal 2>/dev/null | grep -oP '(\d+\.){3}\d+')
+    if [ -z "${ip:-}" ]; then
+      echo "Could not get VM IP. Is ubuntu-minimal running?"
+      exit 1
+    fi
+    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "ubuntu@$ip"
 
 arch-curses iso="~/images/archlinux-2026.03.01-x86_64.iso":
     virt-install \
