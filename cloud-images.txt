@@ -1,0 +1,3 @@
+https://cloud.debian.org/images/cloud/trixie/20260112-2355/debian-13-generic-amd64-20260112-2355.qcow2
+https://mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg-20260315.500742.qcow2
+https://mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-basic-20260315.500742.qcow2
