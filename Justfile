@@ -6,10 +6,10 @@ list:
     virsh -c qemu:///system list --all
 
 # destroy and undefine a VM by name
-destroy name="debian-cloud":
+destroy name="debian-cloud" seed="debian-seed":
     -virsh -c qemu:///system destroy {{name}}
     -virsh -c qemu:///system undefine {{name}} --nvram
-    -rm {{name}}.qcow2 seed.img
+    -rm {{name}}.qcow2 {{seed}}.img -f
 
 connect-console vm="deb":
   virsh -c qemu:///system console {{vm}}
@@ -26,7 +26,7 @@ connect-ssh vm="debian-cloud" user="debian":
     ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "{{user}}@$ip"
 
 # spin up Debian cloud image, then SSH in (login: debian/debian)
-debian-cloud img="~/images/debian-13-generic-amd64-20260112-2355.qcow2" pubkey="~/.ssh/id_ed25519.pub":
+create-debian-cloud img="~/images/debian-13-generic-amd64-20260112-2355.qcow2" pubkey="~/.ssh/id_ed25519.pub":
     #!/usr/bin/env bash
     set -euo pipefail
     img_path="{{img}}"
@@ -35,7 +35,7 @@ debian-cloud img="~/images/debian-13-generic-amd64-20260112-2355.qcow2" pubkey="
     pubkey_path="${pubkey_path/#\~/$HOME}"
     if [ ! -f debian-cloud.qcow2 ]; then
       cp "$img_path" debian-cloud.qcow2
-      qemu-img resize debian-cloud.qcow2 10G
+      qemu-img resize debian-cloud.qcow2 20G
     fi
     if [ ! -f debian-seed.img ]; then
       tmpdir=$(mktemp -d)
@@ -49,23 +49,14 @@ debian-cloud img="~/images/debian-13-generic-amd64-20260112-2355.qcow2" pubkey="
           - $(cat "$pubkey_path")
         sudo: ALL=(ALL) NOPASSWD:ALL
         shell: /bin/bash
-    ssh_pwauth: true
     USERDATA
       cat > "$tmpdir/meta-data" <<METADATA
     instance-id: debian-cloud
     local-hostname: debian-cloud
     METADATA
-      cat > "$tmpdir/network-config" <<NETCFG
-    version: 2
-    ethernets:
-      all:
-        match:
-          name: "*"
-        dhcp4: true
-    NETCFG
       xorriso -as genisoimage -output debian-seed.img \
         -volid cidata -joliet -rock \
-        "$tmpdir/user-data" "$tmpdir/meta-data" "$tmpdir/network-config"
+        "$tmpdir/user-data" "$tmpdir/meta-data"
       rm -rf "$tmpdir"
     fi
     virt-install \
