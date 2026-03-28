@@ -62,7 +62,7 @@ create-debian-cloud img="~/images/debian-13-generic-amd64-20260112-2355.qcow2" p
     virt-install \
       --connect qemu:///system \
       --name debian-cloud \
-      --ram 2048 \
+      --ram 8192 \
       --vcpus 2 \
       --import \
       --disk path=debian-cloud.qcow2,format=qcow2 \
