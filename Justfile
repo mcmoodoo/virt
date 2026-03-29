@@ -6,7 +6,7 @@ list:
     virsh -c qemu:///system list --all
 
 # destroy and undefine a VM by name
-destroy name="debian-cloud" seed="debian-seed":
+destroy-vm name="nixos-cloud" seed="nixos-seed":
     -virsh -c qemu:///system destroy {{name}}
     -virsh -c qemu:///system undefine {{name}} --nvram
     -rm {{name}}.qcow2 {{seed}}.img -f
@@ -15,7 +15,7 @@ connect-console vm="deb":
   virsh -c qemu:///system console {{vm}}
 
 # SSH into a running VM
-connect-ssh vm="debian-cloud" user="debian":
+connect-ssh vm="nixos-cloud" user="nixos":
     #!/usr/bin/env bash
     set -euo pipefail
     ip=$(virsh -c qemu:///system domifaddr {{vm}} 2>/dev/null | grep -oP '(\d+\.){3}\d+')
@@ -23,7 +23,7 @@ connect-ssh vm="debian-cloud" user="debian":
       echo "Could not get VM IP. Is {{vm}} running?"
       exit 1
     fi
-    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "{{user}}@$ip"
+    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/local_vm "{{user}}@$ip"
 
 # spin up Debian cloud image, then SSH in (login: debian/debian)
 create-debian-cloud img="~/images/debian-13-generic-amd64-20260112-2355.qcow2" pubkey="~/.ssh/id_ed25519.pub":
