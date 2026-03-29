@@ -11,9 +11,6 @@ destroy-vm name="nixos-cloud" seed="nixos-seed":
     -virsh -c qemu:///system undefine {{name}} --nvram
     -rm {{name}}.qcow2 {{seed}}.img -f
 
-connect-console vm="deb":
-  virsh -c qemu:///system console {{vm}}
-
 # SSH into a running VM
 connect-ssh vm="nixos-cloud" user="nixos":
     #!/usr/bin/env bash
@@ -24,6 +21,49 @@ connect-ssh vm="nixos-cloud" user="nixos":
       exit 1
     fi
     ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/local_vm "{{user}}@$ip"
+
+# build NixOS 25.11 qcow2 image, import into libvirt, and SSH in
+create-nixos:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -f nixos-cloud.qcow2 ]; then
+      echo "Building NixOS qcow2 image (first build may take a few minutes)..."
+      nix build .#nixosConfigurations.nixos-vm.config.system.build.qcow2 --no-link --print-out-paths \
+        | xargs -I{} cp {}/nixos.qcow2 nixos-cloud.qcow2
+      chmod 644 nixos-cloud.qcow2
+    fi
+    virt-install \
+      --connect qemu:///system \
+      --name nixos-cloud \
+      --ram 8192 \
+      --vcpus 2 \
+      --import \
+      --disk path=nixos-cloud.qcow2,format=qcow2 \
+      --os-variant nixos-unstable \
+      --network network=default \
+      --graphics none \
+      --video virtio \
+      --noautoconsole
+    echo "Waiting for VM to get an IP..."
+    for i in $(seq 1 30); do
+      ip=$(virsh -c qemu:///system domifaddr nixos-cloud 2>/dev/null | grep -oP '(\d+\.){3}\d+') && break
+      sleep 2
+    done
+    if [ -z "${ip:-}" ]; then
+      echo "Could not get VM IP. Try: virsh -c qemu:///system console nixos-cloud"
+      exit 1
+    fi
+    echo "Connecting to nixos@$ip ..."
+    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "nixos@$ip"
+
+# rebuild NixOS qcow2 image from scratch
+rebuild-nixos:
+    rm -f nixos-cloud.qcow2 result
+    echo "Building NixOS qcow2 image..."
+    nix build .#nixosConfigurations.nixos-vm.config.system.build.qcow2 --no-link --print-out-paths \
+      | xargs -I{} cp {}/nixos.qcow2 nixos-cloud.qcow2
+    chmod 644 nixos-cloud.qcow2
+    echo "Done. Run 'just destroy nixos-cloud nixos-seed && just create-nixos' to re-create the VM."
 
 # spin up Debian cloud image, then SSH in (login: debian/debian)
 create-debian-cloud img="~/images/debian-13-generic-amd64-20260112-2355.qcow2" pubkey="~/.ssh/id_ed25519.pub":
@@ -84,45 +124,3 @@ create-debian-cloud img="~/images/debian-13-generic-amd64-20260112-2355.qcow2" p
     echo "Connecting to debian@$ip ..."
     ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "debian@$ip"
 
-# build NixOS 25.11 qcow2 image, import into libvirt, and SSH in
-create-nixos:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ ! -f nixos-cloud.qcow2 ]; then
-      echo "Building NixOS qcow2 image (first build may take a few minutes)..."
-      nix build .#nixosConfigurations.nixos-vm.config.system.build.qcow2 --no-link --print-out-paths \
-        | xargs -I{} cp {}/nixos.qcow2 nixos-cloud.qcow2
-      chmod 644 nixos-cloud.qcow2
-    fi
-    virt-install \
-      --connect qemu:///system \
-      --name nixos-cloud \
-      --ram 8192 \
-      --vcpus 2 \
-      --import \
-      --disk path=nixos-cloud.qcow2,format=qcow2 \
-      --os-variant nixos-unstable \
-      --network network=default \
-      --graphics none \
-      --video virtio \
-      --noautoconsole
-    echo "Waiting for VM to get an IP..."
-    for i in $(seq 1 30); do
-      ip=$(virsh -c qemu:///system domifaddr nixos-cloud 2>/dev/null | grep -oP '(\d+\.){3}\d+') && break
-      sleep 2
-    done
-    if [ -z "${ip:-}" ]; then
-      echo "Could not get VM IP. Try: virsh -c qemu:///system console nixos-cloud"
-      exit 1
-    fi
-    echo "Connecting to nixos@$ip ..."
-    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "nixos@$ip"
-
-# rebuild NixOS qcow2 image from scratch
-rebuild-nixos:
-    rm -f nixos-cloud.qcow2 result
-    echo "Building NixOS qcow2 image..."
-    nix build .#nixosConfigurations.nixos-vm.config.system.build.qcow2 --no-link --print-out-paths \
-      | xargs -I{} cp {}/nixos.qcow2 nixos-cloud.qcow2
-    chmod 644 nixos-cloud.qcow2
-    echo "Done. Run 'just destroy nixos-cloud nixos-seed && just create-nixos' to re-create the VM."
