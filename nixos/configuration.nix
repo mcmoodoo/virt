@@ -36,24 +36,82 @@
   networking.hostName = "nixos-cloud";
 
   environment.systemPackages = with pkgs; [
-    stow unzip
-
-    # core
-    git curl wget jq htop
-    ripgrep fd fzf bat eza
-
-    # editors
-    vim neovim
-
-    # dev
-    nodejs pnpm bun
-    python311 uv
+    sqlite
+    postgresql
+    age
+    tree
+    pinentry-curses
+    dig
+    s3fs
+    rclone
+    goofys
+    awscli2
+    gh
+    lazygit
+    lazydocker
+    lazyjournal
+    gitleaks
+    trufflehog
+    detect-secrets
+    shellcheck
+    semgrep
+    rsync
+    aria2
+    wget
+    curl
+    xh
+    restish
+    atac
+    superfile
+    nnn
+    vifm
+    vim
+    neovim
+    eza
+    bun
+    nodejs_24
+    pnpm
+    openssl
+    pass
+    ncdu
+    libzip
+    unzip
+    fastfetch
+    mermaid-cli
+    nix-index
+    stow
+    starship
+    gcc
+    gnumake
+    lua
+    luarocks-nix
     rustup
-    gcc gnumake
-
-    # infra
-    terraform
-    docker-compose
+    python314 uv
+    lld
+    ydiff
+    diff-so-fancy
+    delta
+    broot
+    fzf
+    file
+    bottom
+    fd
+    bat
+    html-tidy
+    envsubst
+    yq-go
+    jq
+    fx
+    ripgrep
+    zoxide
+    w3m
+    zellij
+    firejail
+    just
+    resvg
+    qrencode
+    asciinema_3
+    asciinema-agg
   ];
 
   system.stateVersion = "25.11";
