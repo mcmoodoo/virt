@@ -5,6 +5,9 @@ default:
 list:
     virsh -c qemu:///system list --all
 
+dom vm="nixos-cloud":
+  virsh -c qemu:///system domifaddr {{vm}}
+
 # destroy and undefine a VM by name
 destroy-vm name="nixos-cloud" seed="nixos-seed":
     -virsh -c qemu:///system destroy {{name}}
@@ -54,7 +57,7 @@ create-nixos:
       exit 1
     fi
     echo "Connecting to nixos@$ip ..."
-    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "nixos@$ip"
+    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/local_vm "nixos@$ip"
 
 # rebuild NixOS qcow2 image from scratch
 rebuild-nixos:
