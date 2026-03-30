@@ -37,7 +37,6 @@
 
   environment.systemPackages = with pkgs; [
     sqlite
-    postgresql
     age
     tree
     pinentry-curses
@@ -46,6 +45,7 @@
     rclone
     goofys
     awscli2
+    git
     gh
     lazygit
     lazydocker
@@ -77,7 +77,6 @@
     libzip
     unzip
     fastfetch
-    mermaid-cli
     nix-index
     stow
     starship
@@ -106,12 +105,8 @@
     zoxide
     w3m
     zellij
-    firejail
     just
-    resvg
     qrencode
-    asciinema_3
-    asciinema-agg
   ];
 
   system.stateVersion = "25.11";
