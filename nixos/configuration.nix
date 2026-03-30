@@ -14,6 +14,15 @@
     ];
   };
 
+  services.postgresql = {
+    enable = true;
+    package = pkgs.postgresql_16;
+
+    extensions = with pkgs.postgresql16Packages; [
+      pgvector
+    ];
+  };
+
   security.sudo.wheelNeedsPassword = false;
 
   services.openssh = {
@@ -21,11 +30,14 @@
     settings.PasswordAuthentication = false;
   };
 
+  programs.nix-ld.enable = true;
   virtualisation.docker.enable = true;
 
   networking.hostName = "nixos-cloud";
 
   environment.systemPackages = with pkgs; [
+    stow unzip
+
     # core
     git curl wget jq htop
     ripgrep fd fzf bat eza
