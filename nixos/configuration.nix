@@ -39,6 +39,8 @@
       stdenv.cc.cc.lib
     ];
   };
+
+  environment.sessionVariables.LD_LIBRARY_PATH = [ "${pkgs.stdenv.cc.cc.lib}/lib" ];
   virtualisation.docker.enable = true;
 
   networking.hostName = "nixos-cloud";
