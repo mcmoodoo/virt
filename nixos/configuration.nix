@@ -1,5 +1,8 @@
 { config, pkgs, ... }: {
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  nix.settings = {
+    experimental-features = [ "nix-command" "flakes" ];
+    trusted-users = [ "nixos" ];
+  };
 
   nixpkgs.config.allowUnfreePredicate = pkg:
     builtins.elem (pkg.pname or (builtins.parseDrvName pkg.name).name) [
@@ -30,7 +33,12 @@
     settings.PasswordAuthentication = false;
   };
 
-  programs.nix-ld.enable = true;
+  programs.nix-ld = {
+    enable = true;
+    libraries = with pkgs; [
+      stdenv.cc.cc.lib
+    ];
+  };
   virtualisation.docker.enable = true;
 
   networking.hostName = "nixos-cloud";

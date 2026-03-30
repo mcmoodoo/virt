@@ -66,7 +66,27 @@ rebuild-nixos:
     nix build .#nixosConfigurations.nixos-vm.config.system.build.qcow2 --no-link --print-out-paths \
       | xargs -I{} cp {}/nixos.qcow2 nixos-cloud.qcow2
     chmod 644 nixos-cloud.qcow2
-    echo "Done. Run 'just destroy nixos-cloud nixos-seed && just create-nixos' to re-create the VM."
+    echo "Done. Run 'just destroy-vm && just create-nixos' to re-create the VM."
+
+# destroy, rebuild image, and re-create the VM in one step
+recreate-nixos:
+    just destroy-vm
+    just rebuild-nixos
+    just create-nixos
+
+# apply config changes to the running VM over SSH (no image rebuild)
+update-nixos vm="nixos-cloud" user="nixos":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ip=$(virsh -c qemu:///system domifaddr {{vm}} 2>/dev/null | grep -oP '(\d+\.){3}\d+')
+    if [ -z "${ip:-}" ]; then
+      echo "Could not get VM IP. Is {{vm}} running?"
+      exit 1
+    fi
+    NIX_SSHOPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/local_vm" \
+      nixos-rebuild switch --flake .#nixos-vm \
+      --target-host "{{user}}@$ip" \
+      --sudo
 
 # spin up Debian cloud image, then SSH in (login: debian/debian)
 create-debian-cloud img="~/images/debian-13-generic-amd64-20260112-2355.qcow2" pubkey="~/.ssh/id_ed25519.pub":
