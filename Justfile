@@ -25,23 +25,22 @@ connect-ssh vm="nixos-cloud" user="nixos":
     fi
     ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/local_vm "{{user}}@$ip"
 
-# build NixOS 25.11 qcow2 image, import into libvirt, and SSH in
-create-nixos:
+# import existing <name>.qcow2 into libvirt and SSH in (create disk with rebuild-nixos / cp / nix build first)
+create-nixos name="nixos-cloud":
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ ! -f nixos-cloud.qcow2 ]; then
-      echo "Building NixOS qcow2 image (first build may take a few minutes)..."
-      nix build .#nixosConfigurations.nixos-vm.config.system.build.qcow2 --no-link --print-out-paths \
-        | xargs -I{} cp {}/nixos.qcow2 nixos-cloud.qcow2
-      chmod 644 nixos-cloud.qcow2
+    disk="{{name}}.qcow2"
+    if [ ! -f "$disk" ]; then
+      echo "Missing disk: $disk"
+      exit 1
     fi
     virt-install \
       --connect qemu:///system \
-      --name nixos-cloud \
+      --name "{{name}}" \
       --ram 8192 \
       --vcpus 2 \
       --import \
-      --disk path=nixos-cloud.qcow2,format=qcow2 \
+      --disk path="$disk",format=qcow2 \
       --os-variant nixos-unstable \
       --network network=default \
       --graphics none \
@@ -49,11 +48,11 @@ create-nixos:
       --noautoconsole
     echo "Waiting for VM to get an IP..."
     for i in $(seq 1 30); do
-      ip=$(virsh -c qemu:///system domifaddr nixos-cloud 2>/dev/null | grep -oP '(\d+\.){3}\d+') && break
+      ip=$(virsh -c qemu:///system domifaddr "{{name}}" 2>/dev/null | grep -oP '(\d+\.){3}\d+') && break
       sleep 2
     done
     if [ -z "${ip:-}" ]; then
-      echo "Could not get VM IP. Try: virsh -c qemu:///system console nixos-cloud"
+      echo "Could not get VM IP. Try: virsh -c qemu:///system console {{name}}"
       exit 1
     fi
     echo "Connecting to nixos@$ip ..."
