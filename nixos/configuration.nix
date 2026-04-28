@@ -47,7 +47,7 @@
   networking.firewall.enable = false;
 
   systemd.services.bootstrap-dotfiles = {
-    description = "Clone mcmoodoo/dotfiles and stow nvim on first boot";
+    description = "Clone mcmoodoo/dotfiles and stow on first boot";
     wantedBy = [ "multi-user.target" ];
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
@@ -65,6 +65,42 @@
       git clone https://github.com/mcmoodoo/dotfiles.git /home/mcmoodoo/dotfiles
       cd /home/mcmoodoo/dotfiles
       stow nvim bash starship
+    '';
+  };
+
+  systemd.services.bootstrap-claude-code = {
+    description = "Install Claude Code CLI on first boot (runs in background)";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network-online.target" ];
+    wants = [ "network-online.target" ];
+    unitConfig.ConditionPathExists = "!/home/mcmoodoo/.local/bin/claude";
+    serviceConfig = {
+      Type = "oneshot";
+      User = "mcmoodoo";
+      Group = "users";
+      WorkingDirectory = "/home/mcmoodoo";
+    };
+    path = with pkgs; [ curl bash cacert ];
+    script = ''
+      curl -fsSL https://claude.ai/install.sh | bash
+    '';
+  };
+
+  systemd.services.bootstrap-nvim-plugins = {
+    description = "Pre-install nvim plugins via lazy.nvim (runs in background)";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "bootstrap-dotfiles.service" ];
+    requires = [ "bootstrap-dotfiles.service" ];
+    unitConfig.ConditionPathExists = "!/home/mcmoodoo/.local/share/nvim/lazy/lazy.nvim";
+    serviceConfig = {
+      Type = "oneshot";
+      User = "mcmoodoo";
+      Group = "users";
+      WorkingDirectory = "/home/mcmoodoo";
+    };
+    path = with pkgs; [ neovim git ];
+    script = ''
+      nvim --headless "+Lazy! sync" +qa
     '';
   };
 
