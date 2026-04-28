@@ -46,10 +46,27 @@
   networking.hostName = "nixos-cloud";
   networking.firewall.enable = false;
 
-  systemd.tmpfiles.rules = [
-    "d /home/nixos/.config 0755 nixos users - -"
-    "L+ /home/nixos/.config/nvim - nixos users - ${./nvim}"
-  ];
+  systemd.services.bootstrap-dotfiles = {
+    description = "Clone mcmoodoo/dotfiles and stow nvim on first boot";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network-online.target" ];
+    wants = [ "network-online.target" ];
+    unitConfig.ConditionPathExists = "!/home/nixos/dotfiles";
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      User = "nixos";
+      Group = "users";
+      WorkingDirectory = "/home/nixos";
+    };
+    path = with pkgs; [ git stow ];
+    script = ''
+      mkdir -p /home/nixos/.config
+      git clone https://github.com/mcmoodoo/dotfiles.git /home/nixos/dotfiles
+      cd /home/nixos/dotfiles
+      stow nvim bash starship
+    '';
+  };
 
   environment.systemPackages = with pkgs; [
     sqlite
