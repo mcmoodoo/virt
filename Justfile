@@ -1,89 +1,88 @@
+VM := "nixos-cloud"
+KEY := "~/.ssh/local_vm"
+
 default:
     @just --list
 
-# list all system domains
-list:
+# === inspection ===
+
+# list all libvirt domains
+ls:
     virsh -c qemu:///system list --all
 
-dom vm="nixos-cloud":
-  virsh -c qemu:///system domifaddr {{vm}}
+# show the VM's IP
+ip name=VM:
+    virsh -c qemu:///system domifaddr {{name}}
 
-# destroy and undefine a VM by name
-destroy-vm name="nixos-cloud" seed="nixos-seed":
-    -virsh -c qemu:///system destroy {{name}}
-    -virsh -c qemu:///system undefine {{name}} --nvram
-    -rm {{name}}.qcow2 {{seed}}.img -f
-
-# SSH into a running VM
-connect-ssh vm="nixos-cloud" user="nixos":
+# ssh into the running VM
+ssh name=VM user="nixos":
     #!/usr/bin/env bash
     set -euo pipefail
-    ip=$(virsh -c qemu:///system domifaddr {{vm}} 2>/dev/null | grep -oP '(\d+\.){3}\d+')
+    ip=$(virsh -c qemu:///system domifaddr {{name}} 2>/dev/null | grep -oP '(\d+\.){3}\d+')
     if [ -z "${ip:-}" ]; then
-      echo "Could not get VM IP. Is {{vm}} running?"
+      echo "Could not get VM IP. Is {{name}} running?"
       exit 1
     fi
-    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/local_vm "{{user}}@$ip"
+    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {{KEY}} "{{user}}@$ip"
 
-# import existing <name>.qcow2 into libvirt and SSH in (create disk with rebuild-nixos / cp / nix build first)
-create-nixos name="nixos-cloud":
+# === image ===
+
+# build the qcow2 from the flake
+build:
+    rm -f {{VM}}.qcow2 result
+    nix build .#nixosConfigurations.nixos-vm.config.system.build.qcow2 --no-link --print-out-paths \
+      | xargs -I{} cp {}/nixos.qcow2 {{VM}}.qcow2
+    chmod 644 {{VM}}.qcow2
+
+# delete the local qcow2
+clean:
+    rm -f {{VM}}.qcow2
+
+# === domain ===
+
+# define & start the VM from the existing qcow2 (run `just build` first if missing)
+up name=VM:
     #!/usr/bin/env bash
     set -euo pipefail
     disk="{{name}}.qcow2"
     if [ ! -f "$disk" ]; then
-      echo "Missing disk: $disk"
+      echo "Missing disk: $disk — run 'just build' first"
       exit 1
     fi
     virt-install \
       --connect qemu:///system \
       --name "{{name}}" \
-      --ram 8192 \
-      --vcpus 2 \
+      --ram 8192 --vcpus 2 \
       --import \
       --disk path="$disk",format=qcow2 \
       --os-variant nixos-unstable \
       --network network=default \
-      --graphics none \
-      --video virtio \
+      --graphics none --video virtio \
       --noautoconsole
-    echo "Waiting for VM to get an IP..."
-    for i in $(seq 1 30); do
-      ip=$(virsh -c qemu:///system domifaddr "{{name}}" 2>/dev/null | grep -oP '(\d+\.){3}\d+') && break
-      sleep 2
-    done
-    if [ -z "${ip:-}" ]; then
-      echo "Could not get VM IP. Try: virsh -c qemu:///system console {{name}}"
-      exit 1
-    fi
-    echo "Connecting to nixos@$ip ..."
-    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/local_vm "nixos@$ip"
 
-# rebuild NixOS qcow2 image from scratch
-rebuild-nixos:
-    rm -f nixos-cloud.qcow2 result
-    echo "Building NixOS qcow2 image..."
-    nix build .#nixosConfigurations.nixos-vm.config.system.build.qcow2 --no-link --print-out-paths \
-      | xargs -I{} cp {}/nixos.qcow2 nixos-cloud.qcow2
-    chmod 644 nixos-cloud.qcow2
-    echo "Done. Run 'just destroy-vm && just create-nixos' to re-create the VM."
+# stop & undefine the VM (qcow2 stays)
+down name=VM:
+    -virsh -c qemu:///system destroy {{name}}
+    -virsh -c qemu:///system undefine {{name}} --nvram
 
-# destroy, rebuild image, and re-create the VM in one step
-recreate-nixos:
-    just destroy-vm
-    just rebuild-nixos
-    just create-nixos
+# down + delete the qcow2
+nuke name=VM: (down name) clean
 
-# apply config changes to the running VM over SSH (no image rebuild)
-update-nixos vm="nixos-cloud" user="nixos":
+# nuke + build + up — guaranteed clean slate
+fresh: nuke build up
+
+# === day-2 ===
+
+# apply config changes to the running VM in-place via SSH
+switch name=VM user="nixos":
     #!/usr/bin/env bash
     set -euo pipefail
-    ip=$(virsh -c qemu:///system domifaddr {{vm}} 2>/dev/null | grep -oP '(\d+\.){3}\d+')
+    ip=$(virsh -c qemu:///system domifaddr {{name}} 2>/dev/null | grep -oP '(\d+\.){3}\d+')
     if [ -z "${ip:-}" ]; then
-      echo "Could not get VM IP. Is {{vm}} running?"
+      echo "Could not get VM IP. Is {{name}} running?"
       exit 1
     fi
-    NIX_SSHOPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/local_vm" \
+    NIX_SSHOPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {{KEY}}" \
       nixos-rebuild switch --flake .#nixos-vm \
       --target-host "{{user}}@$ip" \
       --sudo
-
