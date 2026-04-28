@@ -15,7 +15,7 @@ ip name=VM:
     virsh -c qemu:///system domifaddr {{name}}
 
 # ssh into the running VM
-ssh name=VM user="nixos":
+ssh name=VM user="mcmoodoo":
     #!/usr/bin/env bash
     set -euo pipefail
     ip=$(virsh -c qemu:///system domifaddr {{name}} 2>/dev/null | grep -oP '(\d+\.){3}\d+')
@@ -74,7 +74,7 @@ fresh: nuke build up
 # === day-2 ===
 
 # apply config changes to the running VM in-place via SSH
-switch name=VM user="nixos":
+switch name=VM user="mcmoodoo":
     #!/usr/bin/env bash
     set -euo pipefail
     ip=$(virsh -c qemu:///system domifaddr {{name}} 2>/dev/null | grep -oP '(\d+\.){3}\d+')

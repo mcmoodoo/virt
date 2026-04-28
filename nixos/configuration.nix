@@ -1,7 +1,7 @@
 { config, pkgs, ... }: {
   nix.settings = {
     experimental-features = [ "nix-command" "flakes" ];
-    trusted-users = [ "nixos" ];
+    trusted-users = [ "mcmoodoo" ];
   };
 
   nixpkgs.config.allowUnfreePredicate = pkg:
@@ -9,7 +9,7 @@
       "terraform"
     ];
 
-  users.users.nixos = {
+  users.users.mcmoodoo = {
     isNormalUser = true;
     extraGroups = [ "wheel" "docker" ];
     openssh.authorizedKeys.keys = [
@@ -51,19 +51,19 @@
     wantedBy = [ "multi-user.target" ];
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
-    unitConfig.ConditionPathExists = "!/home/nixos/dotfiles";
+    unitConfig.ConditionPathExists = "!/home/mcmoodoo/dotfiles";
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      User = "nixos";
+      User = "mcmoodoo";
       Group = "users";
-      WorkingDirectory = "/home/nixos";
+      WorkingDirectory = "/home/mcmoodoo";
     };
     path = with pkgs; [ git stow ];
     script = ''
-      mkdir -p /home/nixos/.config
-      git clone https://github.com/mcmoodoo/dotfiles.git /home/nixos/dotfiles
-      cd /home/nixos/dotfiles
+      mkdir -p /home/mcmoodoo/.config
+      git clone https://github.com/mcmoodoo/dotfiles.git /home/mcmoodoo/dotfiles
+      cd /home/mcmoodoo/dotfiles
       stow nvim bash starship
     '';
   };
