@@ -44,6 +44,7 @@
   virtualisation.docker.enable = true;
 
   networking.hostName = "nixos-cloud";
+  networking.firewall.enable = false;
 
   environment.systemPackages = with pkgs; [
     sqlite
