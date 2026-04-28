@@ -46,6 +46,11 @@
   networking.hostName = "nixos-cloud";
   networking.firewall.enable = false;
 
+  systemd.tmpfiles.rules = [
+    "d /home/nixos/.config 0755 nixos users - -"
+    "L+ /home/nixos/.config/nvim - nixos users - ${./nvim}"
+  ];
+
   environment.systemPackages = with pkgs; [
     sqlite
     age
