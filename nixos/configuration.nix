@@ -174,6 +174,7 @@
     zoxide
     w3m
     zellij
+    osc
     just
     qrencode
   ];
