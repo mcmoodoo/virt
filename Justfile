@@ -60,6 +60,18 @@ up name=VM:
       --graphics none --video virtio \
       --noautoconsole
 
+# graceful power-off (domain stays defined; use `start` to bring back)
+stop name=VM:
+    virsh -c qemu:///system shutdown {{name}}
+
+# force power-off (domain stays defined)
+kill name=VM:
+    virsh -c qemu:///system destroy {{name}}
+
+# power on a previously defined VM
+start name=VM:
+    virsh -c qemu:///system start {{name}}
+
 # stop & undefine the VM (qcow2 stays)
 down name=VM:
     -virsh -c qemu:///system destroy {{name}}
