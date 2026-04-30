@@ -23,7 +23,7 @@ ssh name=VM user="mcmoodoo":
       echo "Could not get VM IP. Is {{name}} running?"
       exit 1
     fi
-    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {{KEY}} "{{user}}@$ip"
+    ssh -A -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i {{KEY}} "{{user}}@$ip"
 
 # === image ===
 

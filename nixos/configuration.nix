@@ -30,7 +30,11 @@
 
   services.openssh = {
     enable = true;
-    settings.PasswordAuthentication = false;
+    settings = {
+      PasswordAuthentication = false;
+      AllowAgentForwarding = true;
+      PermitRootLogin = "no";
+    };
   };
 
   programs.nix-ld = {
