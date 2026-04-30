@@ -37,6 +37,14 @@
     };
   };
 
+  programs.git = {
+    enable = true;
+    config = {
+      user.name = "mcmoodoo";
+      user.email = "rashid.makhmud@gmail.com";
+    };
+  };
+
   programs.nix-ld = {
     enable = true;
     libraries = with pkgs; [
