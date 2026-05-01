@@ -74,7 +74,7 @@
     path = with pkgs; [ git stow ];
     script = ''
       mkdir -p /home/mcmoodoo/.config
-      git clone https://github.com/mcmoodoo/dotfiles.git /home/mcmoodoo/dotfiles
+      git clone --branch vm https://github.com/mcmoodoo/dotfiles.git /home/mcmoodoo/dotfiles
       cd /home/mcmoodoo/dotfiles
       stow nvim bash starship
     '';
