@@ -28,15 +28,15 @@ ssh name=VM user="mcmoodoo":
 # === image ===
 
 # build the qcow2 from the flake
-build:
-    rm -f {{VM}}.qcow2 result
+build name=VM:
+    rm -f {{name}}.qcow2 result
     nix build .#nixosConfigurations.nixos-vm.config.system.build.qcow2 --no-link --print-out-paths \
-      | xargs -I{} cp {}/nixos.qcow2 {{VM}}.qcow2
-    chmod 644 {{VM}}.qcow2
+      | xargs -I{} cp {}/nixos.qcow2 {{name}}.qcow2
+    chmod 644 {{name}}.qcow2
 
 # delete the local qcow2
-clean:
-    rm -f {{VM}}.qcow2
+clean name=VM:
+    rm -f {{name}}.qcow2
 
 # === domain ===
 
@@ -78,10 +78,10 @@ down name=VM:
     -virsh -c qemu:///system undefine {{name}} --nvram
 
 # down + delete the qcow2
-nuke name=VM: (down name) clean
+nuke name=VM: (down name) (clean name)
 
 # nuke + build + up — guaranteed clean slate
-fresh: nuke build up
+fresh name=VM: (nuke name) (build name) (up name)
 
 # === day-2 ===
 
