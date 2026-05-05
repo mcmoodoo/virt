@@ -98,6 +98,25 @@
     '';
   };
 
+  systemd.services.bootstrap-foundry = {
+    description = "Install Foundry (forge, cast, anvil, chisel) on first boot";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network-online.target" ];
+    wants = [ "network-online.target" ];
+    unitConfig.ConditionPathExists = "!/home/mcmoodoo/.foundry/bin/forge";
+    serviceConfig = {
+      Type = "oneshot";
+      User = "mcmoodoo";
+      Group = "users";
+      WorkingDirectory = "/home/mcmoodoo";
+    };
+    path = with pkgs; [ curl bash cacert git gnutar gzip ];
+    script = ''
+      curl -L https://foundry.paradigm.xyz | bash
+      /home/mcmoodoo/.foundry/bin/foundryup
+    '';
+  };
+
   systemd.services.bootstrap-nvim-plugins = {
     description = "Pre-install nvim plugins via lazy.nvim (runs in background)";
     wantedBy = [ "multi-user.target" ];
