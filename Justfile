@@ -1,6 +1,9 @@
 VM := "nixos-cloud"
 KEY := "~/.ssh/local_vm"
 
+GCS_BUCKET := env_var_or_default("GCS_BUCKET", "")
+GCP_PROJECT := env_var_or_default("GCP_PROJECT", "")
+
 default:
     @just --list
 
@@ -82,6 +85,43 @@ nuke name=VM: (down name) (clean name)
 
 # nuke + build + up — guaranteed clean slate
 fresh name=VM: (nuke name) (build name) (up name)
+
+# === gce ===
+
+# build the GCE raw tarball (prints store path containing nixos-image-*.raw.tar.gz)
+build-gce:
+    nix build .#nixosConfigurations.nixos-gce.config.system.build.googleComputeImage \
+      --no-link --print-out-paths
+
+# upload the tarball to GCS and register it as a GCE image
+publish-gce:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${GCS_BUCKET:?set GCS_BUCKET}"
+    : "${GCP_PROJECT:?set GCP_PROJECT}"
+    out=$(nix build .#nixosConfigurations.nixos-gce.config.system.build.googleComputeImage \
+            --no-link --print-out-paths)
+    tarball=$(ls "$out"/*.tar.gz | head -n1)
+    name="nixos-$(date +%Y%m%d-%H%M%S)"
+    echo "uploading $tarball -> gs://$GCS_BUCKET/$name.tar.gz"
+    gsutil cp "$tarball" "gs://$GCS_BUCKET/$name.tar.gz"
+    gcloud compute images create "$name" \
+      --project="$GCP_PROJECT" \
+      --source-uri="gs://$GCS_BUCKET/$name.tar.gz" \
+      --family=nixos
+    echo "created image: $name (family=nixos)"
+
+# launch a GCE instance from the latest image in the nixos family
+launch-gce instance="nixos-test" zone="us-central1-a" machine="e2-standard-2":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${GCP_PROJECT:?set GCP_PROJECT}"
+    gcloud compute instances create {{instance}} \
+      --project="$GCP_PROJECT" \
+      --zone={{zone}} \
+      --machine-type={{machine}} \
+      --image-family=nixos \
+      --image-project="$GCP_PROJECT"
 
 # === day-2 ===
 

@@ -13,5 +13,13 @@
         ./nixos/qcow.nix
       ];
     };
+
+    nixosConfigurations.nixos-gce = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        ./nixos/configuration.nix
+        ./nixos/gce.nix
+      ];
+    };
   };
 }
