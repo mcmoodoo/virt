@@ -4,6 +4,9 @@ KEY := "~/.ssh/local_vm"
 GCS_BUCKET := env_var_or_default("GCS_BUCKET", "")
 GCP_PROJECT := env_var_or_default("GCP_PROJECT", "")
 
+S3_BUCKET := env_var_or_default("S3_BUCKET", "")
+AWS_REGION := env_var_or_default("AWS_REGION", "us-east-1")
+
 default:
     @just --list
 
@@ -122,6 +125,77 @@ launch-gce instance="nixos-test" zone="us-central1-a" machine="e2-standard-2":
       --machine-type={{machine}} \
       --image-family=nixos \
       --image-project="$GCP_PROJECT"
+
+# === ec2 ===
+
+# build the EC2 VHD (prints store path containing nixos-amazon-image-*.vhd)
+build-ec2:
+    nix build .#nixosConfigurations.nixos-ec2.config.system.build.amazonImage \
+      --no-link --print-out-paths
+
+# upload the VHD to S3, import as snapshot, register as AMI
+# prereqs: 'vmimport' IAM role with s3:GetObject on $S3_BUCKET (AWS one-time setup)
+publish-ec2:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${S3_BUCKET:?set S3_BUCKET}"
+    out=$(nix build .#nixosConfigurations.nixos-ec2.config.system.build.amazonImage \
+            --no-link --print-out-paths)
+    vhd=$(ls "$out"/*.vhd | head -n1)
+    name="nixos-$(date +%Y%m%d-%H%M%S)"
+    key="$name.vhd"
+    echo "uploading $vhd -> s3://$S3_BUCKET/$key"
+    aws s3 cp "$vhd" "s3://$S3_BUCKET/$key" --region "$AWS_REGION"
+    echo "starting import-snapshot"
+    task=$(aws ec2 import-snapshot --region "$AWS_REGION" \
+            --description "$name" \
+            --disk-container "Format=VHD,UserBucket={S3Bucket=$S3_BUCKET,S3Key=$key}" \
+            --query 'ImportTaskId' --output text)
+    echo "import task: $task — polling (5–15 min typical)"
+    while :; do
+      status=$(aws ec2 describe-import-snapshot-tasks --region "$AWS_REGION" \
+                --import-task-ids "$task" \
+                --query 'ImportSnapshotTasks[0].SnapshotTaskDetail.Status' --output text)
+      case "$status" in
+        completed) break ;;
+        deleted|deleting|cancelled|cancelling) echo "import failed: $status"; exit 1 ;;
+        *)
+          progress=$(aws ec2 describe-import-snapshot-tasks --region "$AWS_REGION" \
+                      --import-task-ids "$task" \
+                      --query 'ImportSnapshotTasks[0].SnapshotTaskDetail.Progress' --output text)
+          echo "  $status ($progress%)"
+          sleep 30
+          ;;
+      esac
+    done
+    snap=$(aws ec2 describe-import-snapshot-tasks --region "$AWS_REGION" \
+            --import-task-ids "$task" \
+            --query 'ImportSnapshotTasks[0].SnapshotTaskDetail.SnapshotId' --output text)
+    echo "snapshot: $snap — registering AMI"
+    ami=$(aws ec2 register-image --region "$AWS_REGION" \
+            --name "$name" \
+            --architecture x86_64 \
+            --root-device-name /dev/xvda \
+            --virtualization-type hvm \
+            --ena-support \
+            --block-device-mappings "DeviceName=/dev/xvda,Ebs={SnapshotId=$snap,VolumeSize=20,DeleteOnTermination=true,VolumeType=gp3}" \
+            --query 'ImageId' --output text)
+    echo "created AMI: $ami (name=$name)"
+
+# launch an EC2 instance from the latest self-owned nixos-* AMI
+launch-ec2 instance="nixos-test" type="t3.medium" key_name="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ami=$(aws ec2 describe-images --region "$AWS_REGION" --owners self \
+            --filters "Name=name,Values=nixos-*" \
+            --query 'sort_by(Images, &CreationDate) | [-1].ImageId' --output text)
+    [ "$ami" = "None" ] && { echo "no nixos-* AMI found in $AWS_REGION"; exit 1; }
+    echo "launching {{instance}} ($ami, {{type}})"
+    args=(--region "$AWS_REGION" --image-id "$ami" --instance-type {{type}} \
+          --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value={{instance}}}]")
+    [ -n "{{key_name}}" ] && args+=(--key-name "{{key_name}}")
+    aws ec2 run-instances "${args[@]}" \
+      --query 'Instances[0].[InstanceId,PublicIpAddress]' --output text
 
 # === day-2 ===
 
