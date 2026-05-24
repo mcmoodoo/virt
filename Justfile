@@ -115,7 +115,7 @@ publish-gce:
     echo "created image: $name (family=nixos)"
 
 # launch a GCE instance from the latest image in the nixos family
-launch-gce instance="nixos-test" zone="us-central1-a" machine="e2-standard-2":
+launch-gce instance="my-bastion" zone="us-central1-a" machine="e2-standard-2":
     #!/usr/bin/env bash
     set -euo pipefail
     : "${GCP_PROJECT:?set GCP_PROJECT}"
@@ -133,8 +133,57 @@ build-ec2:
     nix build .#nixosConfigurations.nixos-ec2.config.system.build.amazonImage \
       --no-link --print-out-paths
 
+# one-time: create the 'vmimport' IAM role EC2 VM Import requires (idempotent)
+# the role name is fixed by AWS — ImportSnapshot looks up this literal name
+setup-vmimport:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${S3_BUCKET:?set S3_BUCKET}"
+    trust=$(mktemp); policy=$(mktemp)
+    trap 'rm -f "$trust" "$policy"' EXIT
+    # trust policy: let EC2's VM Import service assume the role (confused-deputy guard via ExternalId)
+    cat > "$trust" <<'EOF'
+    {
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Effect": "Allow",
+        "Principal": { "Service": "vmie.amazonaws.com" },
+        "Action": "sts:AssumeRole",
+        "Condition": { "StringEquals": { "sts:Externalid": "vmimport" } }
+      }]
+    }
+    EOF
+    # permission policy: read the AMI bucket + create/register the snapshot
+    cat > "$policy" <<EOF
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": ["s3:GetBucketLocation","s3:GetObject","s3:ListBucket"],
+          "Resource": ["arn:aws:s3:::$S3_BUCKET","arn:aws:s3:::$S3_BUCKET/*"]
+        },
+        {
+          "Effect": "Allow",
+          "Action": ["ec2:ModifySnapshotAttribute","ec2:CopySnapshot","ec2:RegisterImage","ec2:Describe*"],
+          "Resource": "*"
+        }
+      ]
+    }
+    EOF
+    if aws iam get-role --role-name vmimport >/dev/null 2>&1; then
+      echo "role 'vmimport' exists — refreshing policy"
+    else
+      echo "creating role 'vmimport'"
+      aws iam create-role --role-name vmimport \
+        --assume-role-policy-document "file://$trust" >/dev/null
+    fi
+    aws iam put-role-policy --role-name vmimport --policy-name vmimport \
+      --policy-document "file://$policy"
+    echo "done — run 'just publish-ec2'"
+
 # upload the VHD to S3, import as snapshot, register as AMI
-# prereqs: 'vmimport' IAM role with s3:GetObject on $S3_BUCKET (AWS one-time setup)
+# prereq: run 'just setup-vmimport' once per AWS account
 publish-ec2:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -172,15 +221,68 @@ publish-ec2:
             --import-task-ids "$task" \
             --query 'ImportSnapshotTasks[0].SnapshotTaskDetail.SnapshotId' --output text)
     echo "snapshot: $snap — registering AMI"
+    # root volume must be >= the snapshot size; derive it instead of hardcoding
+    snap_gib=$(aws ec2 describe-snapshots --region "$AWS_REGION" \
+                --snapshot-ids "$snap" \
+                --query 'Snapshots[0].VolumeSize' --output text)
+    vol_gib=$(( snap_gib > 20 ? snap_gib : 20 ))
     ami=$(aws ec2 register-image --region "$AWS_REGION" \
             --name "$name" \
             --architecture x86_64 \
             --root-device-name /dev/xvda \
             --virtualization-type hvm \
             --ena-support \
-            --block-device-mappings "DeviceName=/dev/xvda,Ebs={SnapshotId=$snap,VolumeSize=20,DeleteOnTermination=true,VolumeType=gp3}" \
+            --block-device-mappings "DeviceName=/dev/xvda,Ebs={SnapshotId=$snap,VolumeSize=$vol_gib,DeleteOnTermination=true,VolumeType=gp3}" \
             --query 'ImageId' --output text)
     echo "created AMI: $ami (name=$name)"
+
+# list self-owned AMIs, newest first (all="1" to include non-nixos-* images)
+list-amis all="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=(--region "$AWS_REGION" --owners self)
+    [ -z "{{all}}" ] && args+=(--filters "Name=name,Values=nixos-*")
+    aws ec2 describe-images "${args[@]}" \
+      --query 'reverse(sort_by(Images,&CreationDate))[].{Name:Name,AMI:ImageId,Created:CreationDate,State:State}' \
+      --output table
+
+# list EC2 instances in the current region, newest first
+list-ec2:
+    aws ec2 describe-instances --region "$AWS_REGION" \
+      --query 'reverse(sort_by(Reservations[].Instances[],&LaunchTime))[].{Name:Tags[?Key==`Name`]|[0].Value,ID:InstanceId,Type:InstanceType,State:State.Name,IP:PublicIpAddress,Launched:LaunchTime}' \
+      --output table
+
+# list EC2 keypairs in the current region
+list-keys:
+    aws ec2 describe-key-pairs --region "$AWS_REGION" \
+      --query 'sort_by(KeyPairs,&KeyName)[].{Name:KeyName,Type:KeyType,ID:KeyPairId}' \
+      --output table
+
+# import a local public key as an EC2 keypair (private key never leaves your machine)
+import-key name pubkey="~/.ssh/id_ed25519.pub":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    path=$(eval echo {{pubkey}})
+    [ -f "$path" ] || { echo "public key not found: $path"; exit 1; }
+    aws ec2 import-key-pair --region "$AWS_REGION" \
+      --key-name "{{name}}" \
+      --public-key-material "fileb://$path" \
+      --query '{Name:KeyName,ID:KeyPairId}' --output table
+
+# ssh into a running EC2 instance by Name tag (user baked into the image config)
+ssh-ec2 instance="my-bastion" user="mcmoodoo":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ip=$(aws ec2 describe-instances --region "$AWS_REGION" \
+          --filters "Name=tag:Name,Values={{instance}}" "Name=instance-state-name,Values=running" \
+          --query 'Reservations[].Instances[].PublicIpAddress | [0]' --output text)
+    if [ -z "$ip" ] || [ "$ip" = "None" ]; then
+      echo "no running instance named {{instance}} with a public IP in $AWS_REGION"
+      exit 1
+    fi
+    echo "ssh {{user}}@$ip"
+    ssh -i {{KEY}} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+      {{user}}@"$ip"
 
 # launch an EC2 instance from the latest self-owned nixos-* AMI
 launch-ec2 instance="nixos-test" type="t3.medium" key_name="":
@@ -196,6 +298,22 @@ launch-ec2 instance="nixos-test" type="t3.medium" key_name="":
     [ -n "{{key_name}}" ] && args+=(--key-name "{{key_name}}")
     aws ec2 run-instances "${args[@]}" \
       --query 'Instances[0].[InstanceId,PublicIpAddress]' --output text
+
+# terminate a running/stopped EC2 instance by Name tag (deletes it + its root EBS volume)
+terminate-ec2 instance="my-bastion":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ids=$(aws ec2 describe-instances --region "$AWS_REGION" \
+            --filters "Name=tag:Name,Values={{instance}}" \
+                      "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+    if [ -z "$ids" ]; then
+      echo "no live instance named {{instance}} in $AWS_REGION"
+      exit 0
+    fi
+    echo "terminating: $ids"
+    aws ec2 terminate-instances --region "$AWS_REGION" --instance-ids $ids \
+      --query 'TerminatingInstances[].{ID:InstanceId,State:CurrentState.Name}' --output table
 
 # === day-2 ===
 
