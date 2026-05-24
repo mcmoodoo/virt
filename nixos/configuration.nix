@@ -76,7 +76,8 @@
       mkdir -p /home/mcmoodoo/.config
       git clone --branch vm https://github.com/mcmoodoo/dotfiles.git /home/mcmoodoo/dotfiles
       cd /home/mcmoodoo/dotfiles
-      stow nvim bash starship
+      stow --adopt nvim bash starship
+      git checkout .
     '';
   };
 
