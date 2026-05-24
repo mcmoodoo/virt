@@ -299,6 +299,42 @@ launch-ec2 instance="nixos-test" type="t3.medium" key_name="":
     aws ec2 run-instances "${args[@]}" \
       --query 'Instances[0].[InstanceId,PublicIpAddress]' --output text
 
+# stop an EC2 instance by Name tag (state preserved on EBS; compute billing pauses, EBS still billed)
+stop-ec2 instance="nixos-test":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ids=$(aws ec2 describe-instances --region "$AWS_REGION" \
+            --filters "Name=tag:Name,Values={{instance}}" \
+                      "Name=instance-state-name,Values=pending,running" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+    if [ -z "$ids" ]; then
+      echo "no running instance named {{instance}} in $AWS_REGION"
+      exit 0
+    fi
+    echo "stopping: $ids"
+    aws ec2 stop-instances --region "$AWS_REGION" --instance-ids $ids \
+      --query 'StoppingInstances[].{ID:InstanceId,State:CurrentState.Name}' --output table
+
+# start a previously stopped EC2 instance by Name tag (prints new public IP once running)
+start-ec2 instance="nixos-test":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ids=$(aws ec2 describe-instances --region "$AWS_REGION" \
+            --filters "Name=tag:Name,Values={{instance}}" \
+                      "Name=instance-state-name,Values=stopped,stopping" \
+            --query 'Reservations[].Instances[].InstanceId' --output text)
+    if [ -z "$ids" ]; then
+      echo "no stopped instance named {{instance}} in $AWS_REGION"
+      exit 0
+    fi
+    echo "starting: $ids"
+    aws ec2 start-instances --region "$AWS_REGION" --instance-ids $ids \
+      --query 'StartingInstances[].{ID:InstanceId,State:CurrentState.Name}' --output table
+    echo "waiting for running state..."
+    aws ec2 wait instance-running --region "$AWS_REGION" --instance-ids $ids
+    aws ec2 describe-instances --region "$AWS_REGION" --instance-ids $ids \
+      --query 'Reservations[].Instances[].[InstanceId,PublicIpAddress]' --output text
+
 # terminate a running/stopped EC2 instance by Name tag (deletes it + its root EBS volume)
 terminate-ec2 instance="my-bastion":
     #!/usr/bin/env bash
