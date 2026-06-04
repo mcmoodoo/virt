@@ -316,7 +316,7 @@ stop-ec2 instance="nixos-test":
       --query 'StoppingInstances[].{ID:InstanceId,State:CurrentState.Name}' --output table
 
 # start a previously stopped EC2 instance by Name tag (prints new public IP once running)
-start-ec2 instance="nixos-test":
+start-ec2 instance="my-bastion":
     #!/usr/bin/env bash
     set -euo pipefail
     ids=$(aws ec2 describe-instances --region "$AWS_REGION" \
