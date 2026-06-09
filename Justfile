@@ -101,7 +101,8 @@ publish-gce:
     #!/usr/bin/env bash
     set -euo pipefail
     : "${GCS_BUCKET:?set GCS_BUCKET}"
-    : "${GCP_PROJECT:?set GCP_PROJECT}"
+    GCP_PROJECT="${GCP_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+    : "${GCP_PROJECT:?set GCP_PROJECT or run: gcloud config set project <id>}"
     out=$(nix build .#nixosConfigurations.nixos-gce.config.system.build.googleComputeImage \
             --no-link --print-out-paths)
     tarball=$(ls "$out"/*.tar.gz | head -n1)
@@ -115,16 +116,35 @@ publish-gce:
     echo "created image: $name (family=nixos)"
 
 # launch a GCE instance from the latest image in the nixos family
-launch-gce instance="my-bastion" zone="us-central1-a" machine="e2-standard-2":
+launch-gce instance="rashid-personal-vm" zone="us-central1-a" machine="e2-standard-4" disk="250GB":
     #!/usr/bin/env bash
     set -euo pipefail
-    : "${GCP_PROJECT:?set GCP_PROJECT}"
+    GCP_PROJECT="${GCP_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+    : "${GCP_PROJECT:?set GCP_PROJECT or run: gcloud config set project <id>}"
     gcloud compute instances create {{instance}} \
       --project="$GCP_PROJECT" \
       --zone={{zone}} \
       --machine-type={{machine}} \
       --image-family=nixos \
-      --image-project="$GCP_PROJECT"
+      --image-project="$GCP_PROJECT" \
+      --boot-disk-size={{disk}}
+
+# ssh into a running GCE instance by name (user baked into the image config)
+ssh-gce instance="rashid-personal-vm" zone="us-central1-a" user="mcmoodoo":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    GCP_PROJECT="${GCP_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+    : "${GCP_PROJECT:?set GCP_PROJECT or run: gcloud config set project <id>}"
+    ip=$(gcloud compute instances describe {{instance}} \
+          --project="$GCP_PROJECT" --zone={{zone}} \
+          --format='value(networkInterfaces[0].accessConfigs[0].natIP)')
+    if [ -z "$ip" ]; then
+      echo "no external IP on instance {{instance}} in {{zone}}"
+      exit 1
+    fi
+    echo "ssh {{user}}@$ip"
+    ssh -i {{KEY}} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+      {{user}}@"$ip"
 
 # === ec2 ===
 
