@@ -146,6 +146,19 @@ ssh-gce instance="rashid-personal-vm" zone="us-central1-a" user="mcmoodoo":
     ssh -i {{KEY}} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
       {{user}}@"$ip"
 
+# tunnel a local port to a port on a running GCE instance over IAP (no public IP / open firewall needed)
+tunnel-gce local="3000" remote="3000" instance="rashid-personal-vm" zone="us-central1-a" user="mcmoodoo":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    GCP_PROJECT="${GCP_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+    : "${GCP_PROJECT:?set GCP_PROJECT or run: gcloud config set project <id>}"
+    echo "forwarding localhost:{{local}} -> {{instance}}:{{remote}} over IAP  (Ctrl-C to stop)"
+    gcloud compute ssh {{user}}@{{instance}} \
+      --project="$GCP_PROJECT" --zone={{zone}} \
+      --tunnel-through-iap \
+      --ssh-key-file={{KEY}} \
+      -- -N -L {{local}}:localhost:{{remote}}
+
 # === ec2 ===
 
 # build the EC2 VHD (prints store path containing nixos-amazon-image-*.vhd)
